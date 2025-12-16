@@ -104,20 +104,76 @@ generate_commands() {
 generate_copilot_prompts() {
   local agents_dir=$1 prompts_dir=$2
   mkdir -p "$prompts_dir"
-  
+
   # Generate a .prompt.md file for each .agent.md file
   for agent_file in "$agents_dir"/speckit.*.agent.md; do
     [[ -f "$agent_file" ]] || continue
-    
+
     local basename=$(basename "$agent_file" .agent.md)
     local prompt_file="$prompts_dir/${basename}.prompt.md"
-    
+
     # Create prompt file with agent frontmatter
     cat > "$prompt_file" <<EOF
 ---
 agent: ${basename}
 ---
 EOF
+  done
+}
+
+generate_goose_recipes() {
+  local output_dir=$1 script_variant=$2
+  mkdir -p "$output_dir"
+
+  for template in templates/commands/*.md; do
+    [[ -f "$template" ]] || continue
+    local name description script_command extensions body activities
+    name=$(basename "$template" .md)
+
+    # Normalize line endings
+    file_content=$(tr -d '\r' < "$template")
+
+    # Extract description from YAML frontmatter
+    description=$(printf '%s\n' "$file_content" | awk '/^description:/ {sub(/^description:[[:space:]]*/, ""); print; exit}')
+
+    # Extract script command from YAML frontmatter
+    script_command=$(printf '%s\n' "$file_content" | awk -v sv="$script_variant" '/^[[:space:]]*'"$script_variant"':[[:space:]]*/ {sub(/^[[:space:]]*'"$script_variant"':[[:space:]]*/, ""); print; exit}')
+
+    if [[ -z $script_command ]]; then
+      echo "Warning: no script command found for $script_variant in $template" >&2
+      script_command="(Missing script command for $script_variant)"
+    fi
+
+    # Default extension for all Goose recipes
+    extensions="builtin::developer"
+
+    # Extract body content (after frontmatter closing ---)
+    body=$(printf '%s\n' "$file_content" | awk '
+      /^---$/ { dash_count++; if (dash_count == 2) { in_body=1; next } }
+      in_body { print }
+    ')
+
+    # Replace {SCRIPT} placeholder with the script command (with .specify/ prefix)
+    body=$(printf '%s\n' "$body" | sed "s|{SCRIPT}|.specify/${script_command}|g")
+
+    # Apply path rewrites for other paths (memory/, templates/) but skip scripts/ since {SCRIPT} already has prefix
+    body=$(printf '%s\n' "$body" | sed -E -e 's@(/?)memory/@.specify/memory/@g' -e 's@(/?)templates/@.specify/templates/@g')
+
+    # Derive activities from description
+    activities="Execute ${description}"
+
+    # Generate YAML recipe file
+    cat > "$output_dir/speckit.$name.yaml" <<RECIPE_EOF
+version: 1.0.0
+title: speckit.$name
+description: "$description"
+extensions:
+$(printf '%s\n' "$extensions" | while read -r ext; do echo "  - $ext"; done)
+activities:
+  - "$activities"
+instructions: |
+$(printf '%s\n' "$body" | sed 's/^/  /')
+RECIPE_EOF
   done
 }
 
@@ -217,13 +273,16 @@ build_variant() {
     bob)
       mkdir -p "$base_dir/.bob/commands"
       generate_commands bob md "\$ARGUMENTS" "$base_dir/.bob/commands" "$script" ;;
+    goose)
+      mkdir -p "$base_dir/.goose/recipes"
+      generate_goose_recipes "$base_dir/.goose/recipes" "$script" ;;
   esac
   ( cd "$base_dir" && zip -r "../spec-kit-template-${agent}-${script}-${NEW_VERSION}.zip" . )
   echo "Created $GENRELEASES_DIR/spec-kit-template-${agent}-${script}-${NEW_VERSION}.zip"
 }
 
 # Determine agent list
-ALL_AGENTS=(claude gemini copilot cursor-agent qwen opencode windsurf codex kilocode auggie roo codebuddy amp shai q bob qoder)
+ALL_AGENTS=(claude gemini copilot cursor-agent qwen opencode windsurf codex kilocode auggie roo codebuddy amp shai q bob qoder goose)
 ALL_SCRIPTS=(sh ps)
 
 norm_list() {

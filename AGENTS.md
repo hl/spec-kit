@@ -48,6 +48,7 @@ Specify supports multiple AI agents by generating agent-specific command files a
 | **Amp**                    | `.agents/commands/`    | Markdown | `amp`           | Amp CLI                     |
 | **SHAI**                   | `.shai/commands/`      | Markdown | `shai`          | SHAI CLI                    |
 | **IBM Bob**                | `.bob/commands/`       | Markdown | N/A (IDE-based) | IBM Bob IDE                 |
+| **Goose**                  | `.goose/recipes/`      | YAML     | `goose`         | Block's Goose AI agent      |
 
 ### Step-by-Step Integration Guide
 
@@ -364,9 +365,27 @@ Command content with {SCRIPT} and {{args}} placeholders.
 """
 ```
 
+### YAML Recipe Format
+
+Used by: Goose
+
+```yaml
+version: 1.0.0
+title: speckit.command-name
+description: "Command description"
+extensions:
+  - builtin::developer
+activities:
+  - "Execute the command"
+instructions: |
+  Command content with {SCRIPT} placeholder.
+```
+
 ## Directory Conventions
 
 - **CLI agents**: Usually `.<agent-name>/commands/`
+- **Recipe-based agents**: Use `recipes/` subdirectory:
+  - Goose: `.goose/recipes/`
 - **IDE agents**: Follow IDE-specific patterns:
   - Copilot: `.github/agents/`
   - Cursor: `.cursor/commands/`
